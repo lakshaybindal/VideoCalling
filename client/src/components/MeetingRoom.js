@@ -78,7 +78,6 @@ const MeetingRoom = () => {
 
   // Clean up undefined connections whenever participants change
   useEffect(() => {
-    console.log('🔄 Participants changed, cleaning up undefined connections...');
     cleanupUndefinedConnections();
   }, [participants]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -96,16 +95,11 @@ const MeetingRoom = () => {
             participant.id !== user.id &&
             participant.id !== 'undefined' &&
             participant.id !== undefined;
-          console.log(`🔍 Participant ${participant?.id} is valid: ${isValid}`);
           return isValid;
         });
         
-        console.log('🔍 Periodic check: Valid participants:', validParticipants.map(p => p.id));
-        console.log('🔍 Current peer connections:', Object.keys(peerConnectionsRef.current));
-        
         validParticipants.forEach(participant => {
           if (!peerConnectionsRef.current[participant.id]) {
-            console.log('🔗 Creating missing peer connection with participant:', participant.id);
             createPeerConnection(participant.id, true);
           }
         });
@@ -116,34 +110,25 @@ const MeetingRoom = () => {
   }, [participants, user.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const initializeWebRTC = async () => {
-    console.log('🎬 Initializing WebRTC...');
     try {
       // Get user media
-      console.log('📹 Getting user media...');
       const stream = await navigator.mediaDevices.getUserMedia({
         video: true,
         audio: true,
       });
 
-      console.log('✅ User media obtained:', stream);
       localStreamRef.current = stream;
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
       }
 
       // Join meeting room via socket
-      console.log('🚪 Joining meeting room:', meetingId, 'User:', user.id, user.username);
       socket.joinMeeting(meetingId, user.id, user.username);
 
       // Set up socket listeners for WebRTC signaling
       setupSocketListeners();
       
       // Create peer connections with existing participants
-      // This is important for when a user joins an existing meeting
-      console.log('🔗 Creating peer connections with existing participants...');
-      console.log('📊 Raw participants data:', participants);
-      console.log('📊 Participants length:', participants?.length);
-      
       if (participants && participants.length > 0) {
         // Filter out undefined participants and self
         const validParticipants = participants.filter(participant => {
@@ -151,32 +136,23 @@ const MeetingRoom = () => {
             participant.id && 
             participant.id !== user.id &&
             participant.id !== 'undefined';
-          console.log(`Participant ${participant?.id} is valid: ${isValid}`);
           return isValid;
         });
-        console.log('✅ Valid participants for peer connections:', validParticipants.map(p => p.id));
         
         validParticipants.forEach(participant => {
-          console.log('🔗 Creating peer connection with existing participant:', participant.id);
           createPeerConnection(participant.id, true);
         });
-      } else {
-        console.log('⚠️ No participants found or participants array is empty');
       }
 
       setIsConnecting(false);
-      console.log('✅ WebRTC initialization complete');
       
       // Immediate cleanup of any undefined connections
       setTimeout(() => {
-        console.log('🧹 Immediate cleanup of undefined connections...');
         cleanupUndefinedConnections();
       }, 100);
       
       // Add a fallback mechanism to create peer connections with existing participants
-      // This ensures we don't miss any connections due to timing issues
       setTimeout(() => {
-        console.log('🔄 Fallback: Checking for missed peer connections...');
         if (participants && participants.length > 0) {
           // Filter out undefined participants and self
           const validParticipants = participants.filter(participant => 
@@ -187,25 +163,21 @@ const MeetingRoom = () => {
           
           validParticipants.forEach(participant => {
             if (!peerConnectionsRef.current[participant.id]) {
-              console.log('🔗 Creating missed peer connection with participant:', participant.id);
               createPeerConnection(participant.id, true);
             }
           });
         }
       }, 2000); // Wait 2 seconds for all user-joined events to be processed
     } catch (error) {
-      console.error('❌ Error accessing media devices:', error);
+      console.error('Error accessing media devices:', error);
       setIsConnecting(false);
     }
   };
 
   const setupSocketListeners = () => {
     if (!socket.socket) {
-      console.log('❌ No socket available for setting up listeners');
       return;
     }
-
-    console.log('🔌 Setting up socket listeners...');
 
     // Remove existing listeners to prevent duplicates
     socket.socket.off('offer');
@@ -216,37 +188,23 @@ const MeetingRoom = () => {
 
     // Handle incoming offers
     socket.socket.on('offer', async (data) => {
-      console.log('MeetingRoom received offer:', data);
       await handleIncomingOffer(data);
     });
 
     // Handle incoming answers
     socket.socket.on('answer', async (data) => {
-      console.log('MeetingRoom received answer:', data);
       await handleIncomingAnswer(data);
     });
 
     // Handle incoming ICE candidates
     socket.socket.on('ice-candidate', async (data) => {
-      console.log('MeetingRoom received ice-candidate:', data);
       await handleIncomingIceCandidate(data);
     });
 
     // Handle user joined
     socket.socket.on('user-joined', async (data) => {
-      console.log('👥 User joined event received:', data);
-      console.log('Current user ID:', user.id);
-      console.log('Joined user ID:', data.userId);
-      console.log('Current peer connections:', Object.keys(peerConnectionsRef.current));
-      console.log('Current remote streams:', Object.keys(remoteStreams));
-      
       if (data.userId !== user.id) {
-        console.log('🔗 Creating peer connection for user:', data.userId);
         await createPeerConnection(data.userId, true); // Existing user creates connection to new user
-        console.log('✅ Peer connection created for user:', data.userId);
-        console.log('Updated peer connections:', Object.keys(peerConnectionsRef.current));
-      } else {
-        console.log('🚫 Ignoring self-join event');
       }
     });
 
@@ -261,11 +219,8 @@ const MeetingRoom = () => {
   };
 
   const createPeerConnection = async (userId, isInitiator) => {
-    console.log(`Creating peer connection for user ${userId}, isInitiator: ${isInitiator}`);
-    
     // Check if peer connection already exists
     if (peerConnectionsRef.current[userId]) {
-      console.log(`Peer connection for user ${userId} already exists, skipping`);
       return;
     }
     
@@ -280,7 +235,6 @@ const MeetingRoom = () => {
 
     // Add local stream
     if (localStreamRef.current) {
-      console.log('Adding local stream tracks to peer connection');
       localStreamRef.current.getTracks().forEach(track => {
         peerConnection.addTrack(track, localStreamRef.current);
       });
@@ -288,51 +242,27 @@ const MeetingRoom = () => {
 
     // Handle remote stream
     peerConnection.ontrack = (event) => {
-      console.log('🎥 Received remote stream for user:', userId);
-      console.log('Remote stream details:', event.streams[0]);
-      console.log('Remote stream tracks:', event.streams[0].getTracks());
       const [remoteStream] = event.streams;
       remoteStreamsRef.current[userId] = remoteStream;
       
       // Force re-render by updating state with a new object
-      setRemoteStreams(prev => {
-        const newStreams = {
-          ...prev,
-          [userId]: remoteStream
-        };
-        console.log('📺 Updated remote streams:', Object.keys(newStreams));
-        return newStreams;
-      });
+      setRemoteStreams(prev => ({
+        ...prev,
+        [userId]: remoteStream
+      }));
     };
 
     // Handle ICE candidates
     peerConnection.onicecandidate = (event) => {
       if (event.candidate) {
-        console.log('Sending ICE candidate for user:', userId);
         socket.sendIceCandidate(meetingId, event.candidate, userId);
       }
     };
 
     peerConnectionsRef.current[userId] = peerConnection;
 
-    // Add connection state change listener
-    peerConnection.onconnectionstatechange = () => {
-      console.log(`Peer connection state for user ${userId}:`, peerConnection.connectionState);
-      if (peerConnection.connectionState === 'connected') {
-        console.log(`✅ Peer connection established with user ${userId}`);
-      }
-    };
-
-    peerConnection.oniceconnectionstatechange = () => {
-      console.log(`ICE connection state for user ${userId}:`, peerConnection.iceConnectionState);
-      if (peerConnection.iceConnectionState === 'connected') {
-        console.log(`✅ ICE connection established with user ${userId}`);
-      }
-    };
-
     if (isInitiator) {
       try {
-        console.log('Creating offer for user:', userId);
         const offer = await peerConnection.createOffer();
         await peerConnection.setLocalDescription(offer);
         socket.sendOffer(meetingId, offer, userId);
@@ -343,19 +273,16 @@ const MeetingRoom = () => {
   };
 
   const handleIncomingOffer = async (data) => {
-    console.log('Received offer from user:', data.targetUserId || data.userId);
     const { offer, targetUserId, userId } = data;
     const actualUserId = targetUserId || userId;
     
     if (!peerConnectionsRef.current[actualUserId]) {
-      console.log('Creating peer connection for incoming offer from user:', actualUserId);
       await createPeerConnection(actualUserId, false);
     }
 
     const peerConnection = peerConnectionsRef.current[actualUserId];
     
     try {
-      console.log('Setting remote description and creating answer for user:', actualUserId);
       await peerConnection.setRemoteDescription(offer);
       
       // Process stored ICE candidates
@@ -369,21 +296,18 @@ const MeetingRoom = () => {
       const answer = await peerConnection.createAnswer();
       await peerConnection.setLocalDescription(answer);
       socket.sendAnswer(meetingId, answer, actualUserId);
-      console.log('Answer sent for user:', actualUserId);
     } catch (error) {
       console.error('Error handling offer:', error);
     }
   };
 
   const handleIncomingAnswer = async (data) => {
-    console.log('Received answer from user:', data.targetUserId || data.userId);
     const { answer, targetUserId, userId } = data;
     const actualUserId = targetUserId || userId;
     const peerConnection = peerConnectionsRef.current[actualUserId];
     
     if (peerConnection) {
       try {
-        console.log('Setting remote description for answer from user:', actualUserId);
         await peerConnection.setRemoteDescription(answer);
         
         // Process stored ICE candidates
@@ -400,27 +324,23 @@ const MeetingRoom = () => {
   };
 
   const handleIncomingIceCandidate = async (data) => {
-    console.log('Received ICE candidate from user:', data.targetUserId || data.userId);
     const { candidate, targetUserId, userId } = data;
     const actualUserId = targetUserId || userId;
     const peerConnection = peerConnectionsRef.current[actualUserId];
     
     if (peerConnection && peerConnection.remoteDescription) {
       try {
-        console.log('Adding ICE candidate for user:', actualUserId);
         await peerConnection.addIceCandidate(candidate);
       } catch (error) {
         console.error('Error adding ICE candidate:', error);
       }
     } else if (peerConnection) {
-      console.log('Peer connection exists but not ready for ICE candidate, storing for later');
       // Store ICE candidate for later when remote description is set
       if (!peerConnection.storedIceCandidates) {
         peerConnection.storedIceCandidates = [];
       }
       peerConnection.storedIceCandidates.push(candidate);
     } else {
-      console.log('No peer connection exists for user, creating one and storing ICE candidate');
       // Create peer connection and store ICE candidate
       await createPeerConnection(actualUserId, false);
       const newPeerConnection = peerConnectionsRef.current[actualUserId];
@@ -540,10 +460,7 @@ const MeetingRoom = () => {
       key === 'undefined' || key === undefined || !key
     );
     
-    console.log('🧹 Found undefined keys to clean up:', undefinedKeys);
-    
     undefinedKeys.forEach(key => {
-      console.log('🧹 Cleaning up undefined peer connection:', key);
       if (peerConnectionsRef.current[key]) {
         peerConnectionsRef.current[key].close();
         delete peerConnectionsRef.current[key];
@@ -555,7 +472,6 @@ const MeetingRoom = () => {
       setRemoteStreams(prev => {
         const newStreams = { ...prev };
         undefinedKeys.forEach(key => delete newStreams[key]);
-        console.log('🧹 Cleaned up remote streams, new streams:', Object.keys(newStreams));
         return newStreams;
       });
     }
@@ -652,17 +568,14 @@ const MeetingRoom = () => {
 
       {/* Video Grid */}
       <Box sx={{ flex: 1, p: 2, overflow: 'hidden' }}>
-        {console.log('Rendering remote streams:', Object.keys(remoteStreams), 'Count:', Object.keys(remoteStreams).length)}
         <Box
           sx={{
             display: 'grid',
             gridTemplateColumns: (() => {
               const totalParticipants = Object.keys(remoteStreams).length + 1; // +1 for local video
-              console.log('Total participants for grid:', totalParticipants);
               
               // Get screen width for responsive grid
               const screenWidth = window.innerWidth;
-              console.log('Screen width:', screenWidth);
               
               // Auto-adjust grid based on number of participants and screen size
               if (totalParticipants <= 1) {
@@ -742,34 +655,30 @@ const MeetingRoom = () => {
                 userId !== user.id && 
                 userId !== 'undefined' && 
                 userId !== undefined;
-              console.log(`🎥 Video filter: userId ${userId} is valid: ${isValid}`);
               return isValid;
             })
-            .map(([userId, stream]) => {
-              console.log(`Rendering video for user ${userId}:`, stream);
-              return (
-                <Box 
-                  key={userId} 
-                  sx={{ 
-                    aspectRatio: '16/9', // Maintain video aspect ratio
-                    minHeight: '200px',
-                    maxHeight: '400px',
-                    display: 'flex',
-                    borderRadius: 2,
-                    overflow: 'hidden',
-                    backgroundColor: '#000'
-                  }}
-                >
-                  <VideoPlayer
-                    stream={stream}
-                    isLocal={false}
-                    userName={`User ${userId}`}
-                    isMuted={false}
-                    isVideoOff={false}
-                  />
-                </Box>
-              );
-            })}
+            .map(([userId, stream]) => (
+              <Box 
+                key={userId} 
+                sx={{ 
+                  aspectRatio: '16/9', // Maintain video aspect ratio
+                  minHeight: '200px',
+                  maxHeight: '400px',
+                  display: 'flex',
+                  borderRadius: 2,
+                  overflow: 'hidden',
+                  backgroundColor: '#000',
+                }}
+              >
+                <VideoPlayer
+                  stream={stream}
+                  isLocal={false}
+                  userName={`User ${userId}`}
+                  isMuted={false}
+                  isVideoOff={false}
+                />
+              </Box>
+            ))}
         </Box>
       </Box>
 
