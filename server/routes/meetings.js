@@ -55,7 +55,9 @@ router.post('/join', auth, async (req, res) => {
   try {
     const { meetingId, password } = req.body;
     
-    const meeting = await Meeting.findOne({ meetingId }).populate('creator', 'username email');
+    const meeting = await Meeting.findOne({ meetingId })
+      .populate('creator', 'username email')
+      .populate('participants.user', 'username email');
     
     if (!meeting) {
       return res.status(404).json({ success: false, message: 'Meeting not found' });
@@ -92,6 +94,16 @@ router.post('/join', auth, async (req, res) => {
       await meeting.save();
     }
 
+    // Transform participants to match client expectations
+    const transformedParticipants = meeting.participants
+      .filter(participant => participant.user) // Filter out participants with missing user data
+      .map(participant => ({
+        userId: participant.user._id,
+        userName: participant.user.username,
+        joinedAt: participant.joinedAt,
+        isActive: participant.isActive
+      }));
+
     res.json({
       success: true,
       meeting: {
@@ -100,7 +112,7 @@ router.post('/join', auth, async (req, res) => {
         title: meeting.title,
         description: meeting.description,
         creator: meeting.creator,
-        participants: meeting.participants,
+        participants: transformedParticipants,
         adminControls: meeting.adminControls,
         status: meeting.status
       }
@@ -149,6 +161,16 @@ router.get('/:meetingId', auth, async (req, res) => {
       return res.status(404).json({ success: false, message: 'Meeting not found' });
     }
 
+    // Transform participants to match client expectations
+    const transformedParticipants = meeting.participants
+      .filter(participant => participant.user) // Filter out participants with missing user data
+      .map(participant => ({
+        userId: participant.user._id,
+        userName: participant.user.username,
+        joinedAt: participant.joinedAt,
+        isActive: participant.isActive
+      }));
+
     res.json({
       success: true,
       meeting: {
@@ -157,7 +179,7 @@ router.get('/:meetingId', auth, async (req, res) => {
         title: meeting.title,
         description: meeting.description,
         creator: meeting.creator,
-        participants: meeting.participants,
+        participants: transformedParticipants,
         adminControls: meeting.adminControls,
         status: meeting.status,
         isScheduled: meeting.isScheduled,

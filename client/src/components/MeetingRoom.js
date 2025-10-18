@@ -76,6 +76,12 @@ const MeetingRoom = () => {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Clean up undefined connections whenever participants change
+  useEffect(() => {
+    console.log('🔄 Participants changed, cleaning up undefined connections...');
+    cleanupUndefinedConnections();
+  }, [participants]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Periodic check to ensure all participants have peer connections
   useEffect(() => {
     if (participants && participants.length > 1) {
@@ -84,11 +90,15 @@ const MeetingRoom = () => {
         cleanupUndefinedConnections();
         
         // Filter out undefined participants and self
-        const validParticipants = participants.filter(participant => 
-          participant && 
-          participant.id && 
-          participant.id !== user.id
-        );
+        const validParticipants = participants.filter(participant => {
+          const isValid = participant && 
+            participant.id && 
+            participant.id !== user.id &&
+            participant.id !== 'undefined' &&
+            participant.id !== undefined;
+          console.log(`🔍 Participant ${participant?.id} is valid: ${isValid}`);
+          return isValid;
+        });
         
         console.log('🔍 Periodic check: Valid participants:', validParticipants.map(p => p.id));
         console.log('🔍 Current peer connections:', Object.keys(peerConnectionsRef.current));
@@ -131,23 +141,37 @@ const MeetingRoom = () => {
       // Create peer connections with existing participants
       // This is important for when a user joins an existing meeting
       console.log('🔗 Creating peer connections with existing participants...');
+      console.log('📊 Raw participants data:', participants);
+      console.log('📊 Participants length:', participants?.length);
+      
       if (participants && participants.length > 0) {
         // Filter out undefined participants and self
-        const validParticipants = participants.filter(participant => 
-          participant && 
-          participant.id && 
-          participant.id !== user.id
-        );
-        console.log('Valid participants for peer connections:', validParticipants.map(p => p.id));
+        const validParticipants = participants.filter(participant => {
+          const isValid = participant && 
+            participant.id && 
+            participant.id !== user.id &&
+            participant.id !== 'undefined';
+          console.log(`Participant ${participant?.id} is valid: ${isValid}`);
+          return isValid;
+        });
+        console.log('✅ Valid participants for peer connections:', validParticipants.map(p => p.id));
         
         validParticipants.forEach(participant => {
           console.log('🔗 Creating peer connection with existing participant:', participant.id);
           createPeerConnection(participant.id, true);
         });
+      } else {
+        console.log('⚠️ No participants found or participants array is empty');
       }
 
       setIsConnecting(false);
       console.log('✅ WebRTC initialization complete');
+      
+      // Immediate cleanup of any undefined connections
+      setTimeout(() => {
+        console.log('🧹 Immediate cleanup of undefined connections...');
+        cleanupUndefinedConnections();
+      }, 100);
       
       // Add a fallback mechanism to create peer connections with existing participants
       // This ensures we don't miss any connections due to timing issues
@@ -512,7 +536,12 @@ const MeetingRoom = () => {
 
   // Cleanup undefined peer connections
   const cleanupUndefinedConnections = () => {
-    const undefinedKeys = Object.keys(peerConnectionsRef.current).filter(key => key === 'undefined');
+    const undefinedKeys = Object.keys(peerConnectionsRef.current).filter(key => 
+      key === 'undefined' || key === undefined || !key
+    );
+    
+    console.log('🧹 Found undefined keys to clean up:', undefinedKeys);
+    
     undefinedKeys.forEach(key => {
       console.log('🧹 Cleaning up undefined peer connection:', key);
       if (peerConnectionsRef.current[key]) {
@@ -526,6 +555,7 @@ const MeetingRoom = () => {
       setRemoteStreams(prev => {
         const newStreams = { ...prev };
         undefinedKeys.forEach(key => delete newStreams[key]);
+        console.log('🧹 Cleaned up remote streams, new streams:', Object.keys(newStreams));
         return newStreams;
       });
     }
@@ -626,26 +656,57 @@ const MeetingRoom = () => {
         <Box
           sx={{
             display: 'grid',
-            gridTemplateColumns: {
-              xs: '1fr',
-              sm: 'repeat(2, 1fr)', // Always 2 columns on small screens
-              md: 'repeat(2, 1fr)', // 2 columns on medium screens (laptop)
-              lg: 'repeat(3, 1fr)', // 3 columns on large screens
-              xl: 'repeat(4, 1fr)', // 4 columns on extra large screens
-            },
+            gridTemplateColumns: (() => {
+              const totalParticipants = Object.keys(remoteStreams).length + 1; // +1 for local video
+              console.log('Total participants for grid:', totalParticipants);
+              
+              // Get screen width for responsive grid
+              const screenWidth = window.innerWidth;
+              console.log('Screen width:', screenWidth);
+              
+              // Auto-adjust grid based on number of participants and screen size
+              if (totalParticipants <= 1) {
+                return '1fr'; // Just local video
+              } else if (totalParticipants <= 2) {
+                return 'repeat(2, 1fr)'; // 2 columns
+              } else if (totalParticipants <= 4) {
+                // For laptop screens (1024px-1440px), use 2x2 grid
+                if (screenWidth >= 1024 && screenWidth <= 1440) {
+                  return 'repeat(2, 1fr)'; // 2x2 grid for laptop
+                }
+                return 'repeat(2, 1fr)'; // 2x2 grid
+              } else if (totalParticipants <= 6) {
+                // For laptop screens, use 2x3 grid
+                if (screenWidth >= 1024 && screenWidth <= 1440) {
+                  return 'repeat(2, 1fr)'; // 2 columns, 3 rows for laptop
+                }
+                return 'repeat(3, 1fr)'; // 3x2 grid
+              } else if (totalParticipants <= 9) {
+                // For laptop screens, use 3x3 grid
+                if (screenWidth >= 1024 && screenWidth <= 1440) {
+                  return 'repeat(3, 1fr)'; // 3x3 grid for laptop
+                }
+                return 'repeat(3, 1fr)'; // 3x3 grid
+              } else {
+                return 'repeat(4, 1fr)'; // 4 columns for more participants
+              }
+            })(),
             gap: 1,
             height: '100%',
             alignItems: 'stretch',
             maxHeight: 'calc(100vh - 200px)', // Ensure it fits on screen
+            minHeight: '400px', // Minimum height for video grid
           }}
         >
           {/* Local Video */}
           <Box sx={{ 
-            minHeight: { xs: 150, sm: 200, md: 250 }, 
-            maxHeight: { xs: 200, sm: 300, md: 400 },
+            aspectRatio: '16/9', // Maintain video aspect ratio
+            minHeight: '200px',
+            maxHeight: '400px',
             display: 'flex',
             borderRadius: 2,
-            overflow: 'hidden'
+            overflow: 'hidden',
+            backgroundColor: '#000'
           }}>
             <VideoPlayer
               stream={localStreamRef.current}
@@ -662,31 +723,41 @@ const MeetingRoom = () => {
               sx={{
                 background: '#333',
                 borderRadius: 2,
-                minHeight: { xs: 150, sm: 200, md: 250 },
-                maxHeight: { xs: 200, sm: 300, md: 400 },
+                aspectRatio: '16/9',
+                minHeight: '200px',
+                maxHeight: '400px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 color: 'white',
-                gridColumn: { xs: '1', sm: '2', md: '2' },
+                gridColumn: 'span 2', // Span across available columns
               }}
             >
               <Typography variant="body2">Waiting for other participants...</Typography>
             </Box>
           )}
           {Object.entries(remoteStreams)
-            .filter(([userId]) => userId !== user.id) // Filter out self
+            .filter(([userId]) => {
+              const isValid = userId && 
+                userId !== user.id && 
+                userId !== 'undefined' && 
+                userId !== undefined;
+              console.log(`🎥 Video filter: userId ${userId} is valid: ${isValid}`);
+              return isValid;
+            })
             .map(([userId, stream]) => {
               console.log(`Rendering video for user ${userId}:`, stream);
               return (
                 <Box 
                   key={userId} 
                   sx={{ 
-                    minHeight: { xs: 150, sm: 200, md: 250 }, 
-                    maxHeight: { xs: 200, sm: 300, md: 400 },
+                    aspectRatio: '16/9', // Maintain video aspect ratio
+                    minHeight: '200px',
+                    maxHeight: '400px',
                     display: 'flex',
                     borderRadius: 2,
-                    overflow: 'hidden'
+                    overflow: 'hidden',
+                    backgroundColor: '#000'
                   }}
                 >
                   <VideoPlayer
