@@ -6,8 +6,9 @@ const cors = require("cors");
 const path = require("path");
 require("dotenv").config();
 
-app.use(cors());
+
 const app = express();
+app.use(cors());
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
