@@ -42,12 +42,6 @@ const MeetingRoom = () => {
   
   const { currentMeeting, participants, isMuted, isVideoOff, isScreenSharing, loading, error } = useSelector(state => state.meeting);
   
-  // Debug participants data
-  useEffect(() => {
-    console.log('📊 Participants updated:', participants);
-    console.log('📊 Participants length:', participants?.length);
-    console.log('📊 Participants details:', participants?.map(p => ({ id: p?.id, userId: p?.userId, userName: p?.userName })));
-  }, [participants]);
   const { chatOpen } = useSelector(state => state.ui);
 
   // WebRTC refs
@@ -65,7 +59,6 @@ const MeetingRoom = () => {
   // Initialize meeting
   useEffect(() => {
     if (meetingId && user) {
-      console.log('🔄 Loading meeting details for meetingId:', meetingId);
       dispatch(getMeetingDetails(meetingId));
     }
   }, [meetingId, user, dispatch]);
