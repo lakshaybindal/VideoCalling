@@ -130,18 +130,27 @@ const MeetingRoom = () => {
       
       // Create peer connections with existing participants
       if (participants && participants.length > 0) {
+        console.log('🔗 Creating peer connections with existing participants...');
+        console.log('📊 Participants:', participants);
+        
         // Filter out undefined participants and self
         const validParticipants = participants.filter(participant => {
           const isValid = participant && 
             participant.id && 
             participant.id !== user.id &&
             participant.id !== 'undefined';
+          console.log(`Participant ${participant?.id} is valid: ${isValid}`);
           return isValid;
         });
         
+        console.log('✅ Valid participants for peer connections:', validParticipants.map(p => p.id));
+        
         validParticipants.forEach(participant => {
+          console.log('🔗 Creating peer connection with existing participant:', participant.id);
           createPeerConnection(participant.id, true);
         });
+      } else {
+        console.log('⚠️ No participants found or participants array is empty');
       }
 
       setIsConnecting(false);
@@ -203,7 +212,9 @@ const MeetingRoom = () => {
 
     // Handle user joined
     socket.socket.on('user-joined', async (data) => {
+      console.log('👥 User joined event received:', data);
       if (data.userId !== user.id) {
+        console.log('🔗 Creating peer connection for new user:', data.userId);
         await createPeerConnection(data.userId, true); // Existing user creates connection to new user
       }
     });
@@ -219,8 +230,12 @@ const MeetingRoom = () => {
   };
 
   const createPeerConnection = async (userId, isInitiator) => {
-    // Check if peer connection already exists
-    if (peerConnectionsRef.current[userId]) {
+    console.log(`🔗 Creating peer connection for user ${userId}, isInitiator: ${isInitiator}`);
+    
+    // Check if peer connection already exists and is not closed
+    if (peerConnectionsRef.current[userId] && 
+        peerConnectionsRef.current[userId].signalingState !== 'closed') {
+      console.log(`⚠️ Peer connection for user ${userId} already exists, skipping`);
       return;
     }
     
@@ -242,6 +257,7 @@ const MeetingRoom = () => {
 
     // Handle remote stream
     peerConnection.ontrack = (event) => {
+      console.log('🎥 Received remote stream for user:', userId);
       const [remoteStream] = event.streams;
       remoteStreamsRef.current[userId] = remoteStream;
       
@@ -263,52 +279,34 @@ const MeetingRoom = () => {
 
     if (isInitiator) {
       try {
+        console.log('📤 Creating offer for user:', userId);
         const offer = await peerConnection.createOffer();
         await peerConnection.setLocalDescription(offer);
         socket.sendOffer(meetingId, offer, userId);
+        console.log('✅ Offer sent to user:', userId);
       } catch (error) {
-        console.error('Error creating offer:', error);
+        console.error('❌ Error creating offer:', error);
       }
     }
   };
 
   const handleIncomingOffer = async (data) => {
+    console.log('📥 Received offer from user:', data.targetUserId || data.userId);
     const { offer, targetUserId, userId } = data;
     const actualUserId = targetUserId || userId;
     
     if (!peerConnectionsRef.current[actualUserId]) {
+      console.log('🔗 Creating peer connection for incoming offer from user:', actualUserId);
       await createPeerConnection(actualUserId, false);
     }
 
     const peerConnection = peerConnectionsRef.current[actualUserId];
     
     try {
-      await peerConnection.setRemoteDescription(offer);
-      
-      // Process stored ICE candidates
-      if (peerConnection.storedIceCandidates) {
-        for (const candidate of peerConnection.storedIceCandidates) {
-          await peerConnection.addIceCandidate(candidate);
-        }
-        peerConnection.storedIceCandidates = [];
-      }
-      
-      const answer = await peerConnection.createAnswer();
-      await peerConnection.setLocalDescription(answer);
-      socket.sendAnswer(meetingId, answer, actualUserId);
-    } catch (error) {
-      console.error('Error handling offer:', error);
-    }
-  };
-
-  const handleIncomingAnswer = async (data) => {
-    const { answer, targetUserId, userId } = data;
-    const actualUserId = targetUserId || userId;
-    const peerConnection = peerConnectionsRef.current[actualUserId];
-    
-    if (peerConnection) {
-      try {
-        await peerConnection.setRemoteDescription(answer);
+      // Check if we're in the right state to set remote description
+      if (peerConnection.signalingState === 'stable') {
+        console.log('📝 Setting remote description and creating answer for user:', actualUserId);
+        await peerConnection.setRemoteDescription(offer);
         
         // Process stored ICE candidates
         if (peerConnection.storedIceCandidates) {
@@ -317,9 +315,48 @@ const MeetingRoom = () => {
           }
           peerConnection.storedIceCandidates = [];
         }
-      } catch (error) {
-        console.error('Error handling answer:', error);
+        
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+        socket.sendAnswer(meetingId, answer, actualUserId);
+        console.log('✅ Answer sent to user:', actualUserId);
+      } else {
+        console.log('⚠️ Peer connection not in stable state:', peerConnection.signalingState);
       }
+    } catch (error) {
+      console.error('❌ Error handling offer:', error);
+    }
+  };
+
+  const handleIncomingAnswer = async (data) => {
+    console.log('📥 Received answer from user:', data.targetUserId || data.userId);
+    const { answer, targetUserId, userId } = data;
+    const actualUserId = targetUserId || userId;
+    const peerConnection = peerConnectionsRef.current[actualUserId];
+    
+    if (peerConnection) {
+      try {
+        // Check if we're in the right state to set remote description
+        if (peerConnection.signalingState === 'have-local-offer') {
+          console.log('📝 Setting remote description for answer from user:', actualUserId);
+          await peerConnection.setRemoteDescription(answer);
+          
+          // Process stored ICE candidates
+          if (peerConnection.storedIceCandidates) {
+            for (const candidate of peerConnection.storedIceCandidates) {
+              await peerConnection.addIceCandidate(candidate);
+            }
+            peerConnection.storedIceCandidates = [];
+          }
+          console.log('✅ Answer processed for user:', actualUserId);
+        } else {
+          console.log('⚠️ Peer connection not in have-local-offer state:', peerConnection.signalingState);
+        }
+      } catch (error) {
+        console.error('❌ Error handling answer:', error);
+      }
+    } else {
+      console.log('⚠️ No peer connection found for user:', actualUserId);
     }
   };
 
@@ -328,19 +365,20 @@ const MeetingRoom = () => {
     const actualUserId = targetUserId || userId;
     const peerConnection = peerConnectionsRef.current[actualUserId];
     
-    if (peerConnection && peerConnection.remoteDescription) {
+    if (peerConnection && peerConnection.remoteDescription && 
+        peerConnection.signalingState !== 'closed') {
       try {
         await peerConnection.addIceCandidate(candidate);
       } catch (error) {
         console.error('Error adding ICE candidate:', error);
       }
-    } else if (peerConnection) {
+    } else if (peerConnection && peerConnection.signalingState !== 'closed') {
       // Store ICE candidate for later when remote description is set
       if (!peerConnection.storedIceCandidates) {
         peerConnection.storedIceCandidates = [];
       }
       peerConnection.storedIceCandidates.push(candidate);
-    } else {
+    } else if (!peerConnection) {
       // Create peer connection and store ICE candidate
       await createPeerConnection(actualUserId, false);
       const newPeerConnection = peerConnectionsRef.current[actualUserId];
