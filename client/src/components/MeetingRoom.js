@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { useSelector, useDispatch } from 'react-redux';
+import React, { useState, useEffect, useRef } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { useSelector, useDispatch } from "react-redux";
 import {
   Box,
   Typography,
@@ -14,7 +14,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-} from '@mui/material';
+} from "@mui/material";
 import {
   Mic,
   MicOff,
@@ -25,13 +25,13 @@ import {
   Chat,
   ExitToApp,
   Settings,
-} from '@mui/icons-material';
-import { useSocket } from '../context/SocketContext';
-import { useAuth } from '../context/AuthContext';
-import { getMeetingDetails, leaveMeeting } from '../store/slices/meetingSlice';
-import VideoPlayer from './VideoPlayer';
-import ChatPanel from './ChatPanel';
-import AdminPanel from './AdminPanel';
+} from "@mui/icons-material";
+import { useSocket } from "../context/SocketContext";
+import { useAuth } from "../context/AuthContext";
+import { getMeetingDetails, leaveMeeting } from "../store/slices/meetingSlice";
+import VideoPlayer from "./VideoPlayer";
+import ChatPanel from "./ChatPanel";
+import AdminPanel from "./AdminPanel";
 
 const MeetingRoom = () => {
   const { meetingId } = useParams();
@@ -39,9 +39,17 @@ const MeetingRoom = () => {
   const dispatch = useDispatch();
   const { user } = useAuth();
   const socket = useSocket();
-  
-  const { currentMeeting, participants, isMuted, isVideoOff, isScreenSharing, loading, error } = useSelector(state => state.meeting);
-  const { chatOpen } = useSelector(state => state.ui);
+
+  const {
+    currentMeeting,
+    participants,
+    isMuted,
+    isVideoOff,
+    isScreenSharing,
+    loading,
+    error,
+  } = useSelector((state) => state.meeting);
+  const { chatOpen } = useSelector((state) => state.ui);
 
   // WebRTC refs
   const localVideoRef = useRef(null);
@@ -80,12 +88,24 @@ const MeetingRoom = () => {
   useEffect(() => {
     if (participants && participants.length > 1) {
       const interval = setInterval(() => {
-        console.log('🔍 Periodic check: Current participants:', participants.map(p => p.id));
-        console.log('🔍 Current peer connections:', Object.keys(peerConnectionsRef.current));
-        
-        participants.forEach(participant => {
-          if (participant.id !== user.id && !peerConnectionsRef.current[participant.id]) {
-            console.log('🔗 Creating missing peer connection with participant:', participant.id);
+        console.log(
+          "🔍 Periodic check: Current participants:",
+          participants.map((p) => p.id)
+        );
+        console.log(
+          "🔍 Current peer connections:",
+          Object.keys(peerConnectionsRef.current)
+        );
+
+        participants.forEach((participant) => {
+          if (
+            participant.id !== user.id &&
+            !peerConnectionsRef.current[participant.id]
+          ) {
+            console.log(
+              "🔗 Creating missing peer connection with participant:",
+              participant.id
+            );
             createPeerConnection(participant.id, true);
           }
         });
@@ -96,115 +116,136 @@ const MeetingRoom = () => {
   }, [participants, user.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const initializeWebRTC = async () => {
-    console.log('🎬 Initializing WebRTC...');
+    console.log("🎬 Initializing WebRTC...");
     try {
       // Get user media
-      console.log('📹 Getting user media...');
+      console.log("📹 Getting user media...");
       const stream = await navigator.mediaDevices.getUserMedia({
         video: true,
         audio: true,
       });
 
-      console.log('✅ User media obtained:', stream);
+      console.log("✅ User media obtained:", stream);
       localStreamRef.current = stream;
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
       }
 
       // Join meeting room via socket
-      console.log('🚪 Joining meeting room:', meetingId, 'User:', user.id, user.username);
+      console.log(
+        "🚪 Joining meeting room:",
+        meetingId,
+        "User:",
+        user.id,
+        user.username
+      );
       socket.joinMeeting(meetingId, user.id, user.username);
 
       // Set up socket listeners for WebRTC signaling
       setupSocketListeners();
-      
+
       // Create peer connections with existing participants
       // This is important for when a user joins an existing meeting
-      console.log('🔗 Creating peer connections with existing participants...');
+      console.log("🔗 Creating peer connections with existing participants...");
       if (participants && participants.length > 0) {
-        participants.forEach(participant => {
+        participants.forEach((participant) => {
           if (participant.id !== user.id) {
-            console.log('🔗 Creating peer connection with existing participant:', participant.id);
+            console.log(
+              "🔗 Creating peer connection with existing participant:",
+              participant.id
+            );
             createPeerConnection(participant.id, true);
           }
         });
       }
 
       setIsConnecting(false);
-      console.log('✅ WebRTC initialization complete');
-      
+      console.log("✅ WebRTC initialization complete");
+
       // Add a fallback mechanism to create peer connections with existing participants
       // This ensures we don't miss any connections due to timing issues
       setTimeout(() => {
-        console.log('🔄 Fallback: Checking for missed peer connections...');
+        console.log("🔄 Fallback: Checking for missed peer connections...");
         if (participants && participants.length > 0) {
-          participants.forEach(participant => {
-            if (participant.id !== user.id && !peerConnectionsRef.current[participant.id]) {
-              console.log('🔗 Creating missed peer connection with participant:', participant.id);
+          participants.forEach((participant) => {
+            if (
+              participant.id !== user.id &&
+              !peerConnectionsRef.current[participant.id]
+            ) {
+              console.log(
+                "🔗 Creating missed peer connection with participant:",
+                participant.id
+              );
               createPeerConnection(participant.id, true);
             }
           });
         }
       }, 2000); // Wait 2 seconds for all user-joined events to be processed
     } catch (error) {
-      console.error('❌ Error accessing media devices:', error);
+      console.error("❌ Error accessing media devices:", error);
       setIsConnecting(false);
     }
   };
 
   const setupSocketListeners = () => {
     if (!socket.socket) {
-      console.log('❌ No socket available for setting up listeners');
+      console.log("❌ No socket available for setting up listeners");
       return;
     }
 
-    console.log('🔌 Setting up socket listeners...');
+    console.log("🔌 Setting up socket listeners...");
 
     // Remove existing listeners to prevent duplicates
-    socket.socket.off('offer');
-    socket.socket.off('answer');
-    socket.socket.off('ice-candidate');
-    socket.socket.off('user-joined');
-    socket.socket.off('user-left');
+    socket.socket.off("offer");
+    socket.socket.off("answer");
+    socket.socket.off("ice-candidate");
+    socket.socket.off("user-joined");
+    socket.socket.off("user-left");
 
     // Handle incoming offers
-    socket.socket.on('offer', async (data) => {
-      console.log('MeetingRoom received offer:', data);
+    socket.socket.on("offer", async (data) => {
+      console.log("MeetingRoom received offer:", data);
       await handleIncomingOffer(data);
     });
 
     // Handle incoming answers
-    socket.socket.on('answer', async (data) => {
-      console.log('MeetingRoom received answer:', data);
+    socket.socket.on("answer", async (data) => {
+      console.log("MeetingRoom received answer:", data);
       await handleIncomingAnswer(data);
     });
 
     // Handle incoming ICE candidates
-    socket.socket.on('ice-candidate', async (data) => {
-      console.log('MeetingRoom received ice-candidate:', data);
+    socket.socket.on("ice-candidate", async (data) => {
+      console.log("MeetingRoom received ice-candidate:", data);
       await handleIncomingIceCandidate(data);
     });
 
     // Handle user joined
-    socket.socket.on('user-joined', async (data) => {
-      console.log('👥 User joined event received:', data);
-      console.log('Current user ID:', user.id);
-      console.log('Joined user ID:', data.userId);
-      console.log('Current peer connections:', Object.keys(peerConnectionsRef.current));
-      console.log('Current remote streams:', Object.keys(remoteStreams));
-      
+    socket.socket.on("user-joined", async (data) => {
+      console.log("👥 User joined event received:", data);
+      console.log("Current user ID:", user.id);
+      console.log("Joined user ID:", data.userId);
+      console.log(
+        "Current peer connections:",
+        Object.keys(peerConnectionsRef.current)
+      );
+      console.log("Current remote streams:", Object.keys(remoteStreams));
+
       if (data.userId !== user.id) {
-        console.log('🔗 Creating peer connection for user:', data.userId);
+        console.log("🔗 Creating peer connection for user:", data.userId);
         await createPeerConnection(data.userId, true); // Existing user creates connection to new user
-        console.log('✅ Peer connection created for user:', data.userId);
-        console.log('Updated peer connections:', Object.keys(peerConnectionsRef.current));
+        console.log("✅ Peer connection created for user:", data.userId);
+        console.log(
+          "Updated peer connections:",
+          Object.keys(peerConnectionsRef.current)
+        );
       } else {
-        console.log('🚫 Ignoring self-join event');
+        console.log("🚫 Ignoring self-join event");
       }
     });
 
     // Handle user left
-    socket.socket.on('user-left', (data) => {
+    socket.socket.on("user-left", (data) => {
       if (peerConnectionsRef.current[data.userId]) {
         peerConnectionsRef.current[data.userId].close();
         delete peerConnectionsRef.current[data.userId];
@@ -214,18 +255,22 @@ const MeetingRoom = () => {
   };
 
   const createPeerConnection = async (userId, isInitiator) => {
-    console.log(`Creating peer connection for user ${userId}, isInitiator: ${isInitiator}`);
-    
+    console.log(
+      `Creating peer connection for user ${userId}, isInitiator: ${isInitiator}`
+    );
+
     // Check if peer connection already exists
     if (peerConnectionsRef.current[userId]) {
-      console.log(`Peer connection for user ${userId} already exists, skipping`);
+      console.log(
+        `Peer connection for user ${userId} already exists, skipping`
+      );
       return;
     }
-    
+
     const configuration = {
       iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" },
       ],
     };
 
@@ -233,27 +278,27 @@ const MeetingRoom = () => {
 
     // Add local stream
     if (localStreamRef.current) {
-      console.log('Adding local stream tracks to peer connection');
-      localStreamRef.current.getTracks().forEach(track => {
+      console.log("Adding local stream tracks to peer connection");
+      localStreamRef.current.getTracks().forEach((track) => {
         peerConnection.addTrack(track, localStreamRef.current);
       });
     }
 
     // Handle remote stream
     peerConnection.ontrack = (event) => {
-      console.log('🎥 Received remote stream for user:', userId);
-      console.log('Remote stream details:', event.streams[0]);
-      console.log('Remote stream tracks:', event.streams[0].getTracks());
+      console.log("🎥 Received remote stream for user:", userId);
+      console.log("Remote stream details:", event.streams[0]);
+      console.log("Remote stream tracks:", event.streams[0].getTracks());
       const [remoteStream] = event.streams;
       remoteStreamsRef.current[userId] = remoteStream;
-      
+
       // Force re-render by updating state with a new object
-      setRemoteStreams(prev => {
+      setRemoteStreams((prev) => {
         const newStreams = {
           ...prev,
-          [userId]: remoteStream
+          [userId]: remoteStream,
         };
-        console.log('📺 Updated remote streams:', Object.keys(newStreams));
+        console.log("📺 Updated remote streams:", Object.keys(newStreams));
         return newStreams;
       });
     };
@@ -261,7 +306,7 @@ const MeetingRoom = () => {
     // Handle ICE candidates
     peerConnection.onicecandidate = (event) => {
       if (event.candidate) {
-        console.log('Sending ICE candidate for user:', userId);
+        console.log("Sending ICE candidate for user:", userId);
         socket.sendIceCandidate(meetingId, event.candidate, userId);
       }
     };
@@ -270,47 +315,59 @@ const MeetingRoom = () => {
 
     // Add connection state change listener
     peerConnection.onconnectionstatechange = () => {
-      console.log(`Peer connection state for user ${userId}:`, peerConnection.connectionState);
-      if (peerConnection.connectionState === 'connected') {
+      console.log(
+        `Peer connection state for user ${userId}:`,
+        peerConnection.connectionState
+      );
+      if (peerConnection.connectionState === "connected") {
         console.log(`✅ Peer connection established with user ${userId}`);
       }
     };
 
     peerConnection.oniceconnectionstatechange = () => {
-      console.log(`ICE connection state for user ${userId}:`, peerConnection.iceConnectionState);
-      if (peerConnection.iceConnectionState === 'connected') {
+      console.log(
+        `ICE connection state for user ${userId}:`,
+        peerConnection.iceConnectionState
+      );
+      if (peerConnection.iceConnectionState === "connected") {
         console.log(`✅ ICE connection established with user ${userId}`);
       }
     };
 
     if (isInitiator) {
       try {
-        console.log('Creating offer for user:', userId);
+        console.log("Creating offer for user:", userId);
         const offer = await peerConnection.createOffer();
         await peerConnection.setLocalDescription(offer);
         socket.sendOffer(meetingId, offer, userId);
       } catch (error) {
-        console.error('Error creating offer:', error);
+        console.error("Error creating offer:", error);
       }
     }
   };
 
   const handleIncomingOffer = async (data) => {
-    console.log('Received offer from user:', data.targetUserId || data.userId);
+    console.log("Received offer from user:", data.targetUserId || data.userId);
     const { offer, targetUserId, userId } = data;
     const actualUserId = targetUserId || userId;
-    
+
     if (!peerConnectionsRef.current[actualUserId]) {
-      console.log('Creating peer connection for incoming offer from user:', actualUserId);
+      console.log(
+        "Creating peer connection for incoming offer from user:",
+        actualUserId
+      );
       await createPeerConnection(actualUserId, false);
     }
 
     const peerConnection = peerConnectionsRef.current[actualUserId];
-    
+
     try {
-      console.log('Setting remote description and creating answer for user:', actualUserId);
+      console.log(
+        "Setting remote description and creating answer for user:",
+        actualUserId
+      );
       await peerConnection.setRemoteDescription(offer);
-      
+
       // Process stored ICE candidates
       if (peerConnection.storedIceCandidates) {
         for (const candidate of peerConnection.storedIceCandidates) {
@@ -318,27 +375,30 @@ const MeetingRoom = () => {
         }
         peerConnection.storedIceCandidates = [];
       }
-      
+
       const answer = await peerConnection.createAnswer();
       await peerConnection.setLocalDescription(answer);
       socket.sendAnswer(meetingId, answer, actualUserId);
-      console.log('Answer sent for user:', actualUserId);
+      console.log("Answer sent for user:", actualUserId);
     } catch (error) {
-      console.error('Error handling offer:', error);
+      console.error("Error handling offer:", error);
     }
   };
 
   const handleIncomingAnswer = async (data) => {
-    console.log('Received answer from user:', data.targetUserId || data.userId);
+    console.log("Received answer from user:", data.targetUserId || data.userId);
     const { answer, targetUserId, userId } = data;
     const actualUserId = targetUserId || userId;
     const peerConnection = peerConnectionsRef.current[actualUserId];
-    
+
     if (peerConnection) {
       try {
-        console.log('Setting remote description for answer from user:', actualUserId);
+        console.log(
+          "Setting remote description for answer from user:",
+          actualUserId
+        );
         await peerConnection.setRemoteDescription(answer);
-        
+
         // Process stored ICE candidates
         if (peerConnection.storedIceCandidates) {
           for (const candidate of peerConnection.storedIceCandidates) {
@@ -347,33 +407,40 @@ const MeetingRoom = () => {
           peerConnection.storedIceCandidates = [];
         }
       } catch (error) {
-        console.error('Error handling answer:', error);
+        console.error("Error handling answer:", error);
       }
     }
   };
 
   const handleIncomingIceCandidate = async (data) => {
-    console.log('Received ICE candidate from user:', data.targetUserId || data.userId);
+    console.log(
+      "Received ICE candidate from user:",
+      data.targetUserId || data.userId
+    );
     const { candidate, targetUserId, userId } = data;
     const actualUserId = targetUserId || userId;
     const peerConnection = peerConnectionsRef.current[actualUserId];
-    
+
     if (peerConnection && peerConnection.remoteDescription) {
       try {
-        console.log('Adding ICE candidate for user:', actualUserId);
+        console.log("Adding ICE candidate for user:", actualUserId);
         await peerConnection.addIceCandidate(candidate);
       } catch (error) {
-        console.error('Error adding ICE candidate:', error);
+        console.error("Error adding ICE candidate:", error);
       }
     } else if (peerConnection) {
-      console.log('Peer connection exists but not ready for ICE candidate, storing for later');
+      console.log(
+        "Peer connection exists but not ready for ICE candidate, storing for later"
+      );
       // Store ICE candidate for later when remote description is set
       if (!peerConnection.storedIceCandidates) {
         peerConnection.storedIceCandidates = [];
       }
       peerConnection.storedIceCandidates.push(candidate);
     } else {
-      console.log('No peer connection exists for user, creating one and storing ICE candidate');
+      console.log(
+        "No peer connection exists for user, creating one and storing ICE candidate"
+      );
       // Create peer connection and store ICE candidate
       await createPeerConnection(actualUserId, false);
       const newPeerConnection = peerConnectionsRef.current[actualUserId];
@@ -391,7 +458,7 @@ const MeetingRoom = () => {
       const audioTrack = localStreamRef.current.getAudioTracks()[0];
       if (audioTrack) {
         audioTrack.enabled = !audioTrack.enabled;
-        dispatch({ type: 'meeting/setMuted', payload: !audioTrack.enabled });
+        dispatch({ type: "meeting/setMuted", payload: !audioTrack.enabled });
         socket.toggleAudio(meetingId, user.id, !audioTrack.enabled);
       }
     }
@@ -402,7 +469,7 @@ const MeetingRoom = () => {
       const videoTrack = localStreamRef.current.getVideoTracks()[0];
       if (videoTrack) {
         videoTrack.enabled = !videoTrack.enabled;
-        dispatch({ type: 'meeting/setVideoOff', payload: !videoTrack.enabled });
+        dispatch({ type: "meeting/setVideoOff", payload: !videoTrack.enabled });
         socket.toggleVideo(meetingId, user.id, !videoTrack.enabled);
       }
     }
@@ -413,73 +480,77 @@ const MeetingRoom = () => {
       if (isScreenSharing) {
         // Stop screen sharing
         if (localStreamRef.current) {
-          localStreamRef.current.getTracks().forEach(track => track.stop());
+          localStreamRef.current.getTracks().forEach((track) => track.stop());
         }
-        
+
         // Get user media again
         const stream = await navigator.mediaDevices.getUserMedia({
           video: true,
           audio: true,
         });
-        
+
         localStreamRef.current = stream;
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = stream;
         }
-        
+
         // Update all peer connections
-        Object.values(peerConnectionsRef.current).forEach(pc => {
-          const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
+        Object.values(peerConnectionsRef.current).forEach((pc) => {
+          const sender = pc
+            .getSenders()
+            .find((s) => s.track && s.track.kind === "video");
           if (sender) {
             sender.replaceTrack(stream.getVideoTracks()[0]);
           }
         });
-        
+
         socket.stopScreenShare(meetingId, user.id, user.username);
-        dispatch({ type: 'meeting/setScreenSharing', payload: false });
+        dispatch({ type: "meeting/setScreenSharing", payload: false });
       } else {
         // Start screen sharing
         const stream = await navigator.mediaDevices.getDisplayMedia({
           video: true,
           audio: true,
         });
-        
+
         localStreamRef.current = stream;
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = stream;
         }
-        
+
         // Update all peer connections
-        Object.values(peerConnectionsRef.current).forEach(pc => {
-          const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
+        Object.values(peerConnectionsRef.current).forEach((pc) => {
+          const sender = pc
+            .getSenders()
+            .find((s) => s.track && s.track.kind === "video");
           if (sender) {
             sender.replaceTrack(stream.getVideoTracks()[0]);
           }
         });
-        
+
         socket.startScreenShare(meetingId, user.id, user.username);
-        dispatch({ type: 'meeting/setScreenSharing', payload: true });
+        dispatch({ type: "meeting/setScreenSharing", payload: true });
       }
     } catch (error) {
-      console.error('Error toggling screen share:', error);
+      console.error("Error toggling screen share:", error);
     }
   };
 
   const handleLeaveMeeting = () => {
     cleanup();
     dispatch(leaveMeeting());
-    navigate('/');
+    navigate("/");
   };
 
   const cleanup = () => {
     // Close all peer connections
-    Object.values(peerConnectionsRef.current).forEach(pc => pc.close());
+    Object.values(peerConnectionsRef.current).forEach((pc) => pc.close());
     peerConnectionsRef.current = {};
     remoteStreamsRef.current = {};
 
     // Stop local stream
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => track.stop());
+      localStreamRef.current.getTracks().forEach((track) => track.stop());
     }
 
     // Leave socket room
@@ -492,17 +563,17 @@ const MeetingRoom = () => {
     return (
       <Box
         sx={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          minHeight: '100vh',
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          minHeight: "100vh",
+          background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
         }}
       >
-        <CircularProgress size={60} sx={{ color: 'white', mb: 2 }} />
-        <Typography variant="h6" sx={{ color: 'white' }}>
-          {loading ? 'Loading meeting...' : 'Connecting...'}
+        <CircularProgress size={60} sx={{ color: "white", mb: 2 }} />
+        <Typography variant="h6" sx={{ color: "white" }}>
+          {loading ? "Loading meeting..." : "Connecting..."}
         </Typography>
       </Box>
     );
@@ -512,12 +583,12 @@ const MeetingRoom = () => {
     return (
       <Box
         sx={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          minHeight: '100vh',
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          minHeight: "100vh",
+          background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
           p: 4,
         }}
       >
@@ -526,8 +597,8 @@ const MeetingRoom = () => {
         </Alert>
         <Button
           variant="contained"
-          onClick={() => navigate('/')}
-          sx={{ bgcolor: 'white', color: '#1976d2' }}
+          onClick={() => navigate("/")}
+          sx={{ bgcolor: "white", color: "#1976d2" }}
         >
           Go Home
         </Button>
@@ -536,39 +607,46 @@ const MeetingRoom = () => {
   }
 
   return (
-    <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', background: '#000' }}>
+    <Box
+      sx={{
+        height: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        background: "#000",
+      }}
+    >
       {/* Header */}
       <Box
         sx={{
-          background: 'rgba(0,0,0,0.8)',
-          color: 'white',
+          background: "rgba(0,0,0,0.8)",
+          color: "white",
           p: 2,
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
           zIndex: 1000,
         }}
       >
         <Typography variant="h6">
-          {currentMeeting?.title || 'Meeting Room'}
+          {currentMeeting?.title || "Meeting Room"}
         </Typography>
-        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+        <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
           <Chip
             label={`${participants.length} participants`}
             size="small"
-            sx={{ color: 'white', bgcolor: 'rgba(255,255,255,0.2)' }}
+            sx={{ color: "white", bgcolor: "rgba(255,255,255,0.2)" }}
           />
           {isCreator && (
             <IconButton
               onClick={() => setShowAdminPanel(true)}
-              sx={{ color: 'white' }}
+              sx={{ color: "white" }}
             >
               <Settings />
             </IconButton>
           )}
           <IconButton
             onClick={() => setShowLeaveDialog(true)}
-            sx={{ color: 'white' }}
+            sx={{ color: "white" }}
           >
             <ExitToApp />
           </IconButton>
@@ -576,24 +654,38 @@ const MeetingRoom = () => {
       </Box>
 
       {/* Video Grid */}
-      <Box sx={{ flex: 1, p: 2, overflow: 'hidden' }}>
-        {console.log('Rendering remote streams:', Object.keys(remoteStreams), 'Count:', Object.keys(remoteStreams).length)}
+      <Box sx={{ flex: 1, p: 2, overflow: "hidden" }}>
+        {console.log(
+          "Rendering remote streams:",
+          Object.keys(remoteStreams),
+          "Count:",
+          Object.keys(remoteStreams).length
+        )}
         <Box
           sx={{
-            display: 'grid',
+            display: "grid",
             gridTemplateColumns: {
-              xs: '1fr',
-              sm: Object.keys(remoteStreams).length <= 1 ? 'repeat(2, 1fr)' : 'repeat(2, 1fr)',
-              md: Object.keys(remoteStreams).length <= 2 ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)',
-              lg: Object.keys(remoteStreams).length <= 3 ? 'repeat(3, 1fr)' : 'repeat(4, 1fr)',
+              xs: "1fr",
+              sm:
+                Object.keys(remoteStreams).length <= 1
+                  ? "repeat(2, 1fr)"
+                  : "repeat(2, 1fr)",
+              md:
+                Object.keys(remoteStreams).length <= 2
+                  ? "repeat(2, 1fr)"
+                  : "repeat(3, 1fr)",
+              lg:
+                Object.keys(remoteStreams).length <= 3
+                  ? "repeat(3, 1fr)"
+                  : "repeat(4, 1fr)",
             },
             gap: 2,
-            height: '100%',
-            alignItems: 'stretch',
+            height: "100%",
+            alignItems: "stretch",
           }}
         >
           {/* Local Video */}
-          <Box sx={{ minHeight: 200, display: 'flex' }}>
+          <Box sx={{ minHeight: 200, display: "flex" }}>
             <VideoPlayer
               stream={localStreamRef.current}
               isLocal={true}
@@ -607,14 +699,14 @@ const MeetingRoom = () => {
           {Object.keys(remoteStreams).length === 0 && (
             <Box
               sx={{
-                background: '#333',
+                background: "#333",
                 borderRadius: 2,
                 minHeight: 200,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'white',
-                gridColumn: '1 / -1',
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "white",
+                gridColumn: "1 / -1",
               }}
             >
               <Typography>Waiting for other participants...</Typography>
@@ -623,7 +715,7 @@ const MeetingRoom = () => {
           {Object.entries(remoteStreams).map(([userId, stream]) => {
             console.log(`Rendering video for user ${userId}:`, stream);
             return (
-              <Box key={userId} sx={{ minHeight: 200, display: 'flex' }}>
+              <Box key={userId} sx={{ minHeight: 200, display: "flex" }}>
                 <VideoPlayer
                   stream={stream}
                   isLocal={false}
@@ -640,25 +732,25 @@ const MeetingRoom = () => {
       {/* Controls */}
       <Box
         sx={{
-          position: 'fixed',
+          position: "fixed",
           bottom: 20,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          display: 'flex',
+          left: "50%",
+          transform: "translateX(-50%)",
+          display: "flex",
           gap: 2,
-          background: 'rgba(0,0,0,0.8)',
+          background: "rgba(0,0,0,0.8)",
           padding: 2,
           borderRadius: 4,
-          backdropFilter: 'blur(10px)',
+          backdropFilter: "blur(10px)",
           zIndex: 1000,
         }}
       >
         <IconButton
           onClick={toggleAudio}
           sx={{
-            bgcolor: isMuted ? '#f44336' : '#4caf50',
-            color: 'white',
-            '&:hover': { bgcolor: isMuted ? '#d32f2f' : '#388e3c' },
+            bgcolor: isMuted ? "#f44336" : "#4caf50",
+            color: "white",
+            "&:hover": { bgcolor: isMuted ? "#d32f2f" : "#388e3c" },
           }}
         >
           {isMuted ? <MicOff /> : <Mic />}
@@ -667,9 +759,9 @@ const MeetingRoom = () => {
         <IconButton
           onClick={toggleVideo}
           sx={{
-            bgcolor: isVideoOff ? '#f44336' : '#4caf50',
-            color: 'white',
-            '&:hover': { bgcolor: isVideoOff ? '#d32f2f' : '#388e3c' },
+            bgcolor: isVideoOff ? "#f44336" : "#4caf50",
+            color: "white",
+            "&:hover": { bgcolor: isVideoOff ? "#d32f2f" : "#388e3c" },
           }}
         >
           {isVideoOff ? <VideocamOff /> : <Videocam />}
@@ -678,20 +770,20 @@ const MeetingRoom = () => {
         <IconButton
           onClick={toggleScreenShare}
           sx={{
-            bgcolor: isScreenSharing ? '#ff9800' : '#1976d2',
-            color: 'white',
-            '&:hover': { bgcolor: isScreenSharing ? '#f57c00' : '#1565c0' },
+            bgcolor: isScreenSharing ? "#ff9800" : "#1976d2",
+            color: "white",
+            "&:hover": { bgcolor: isScreenSharing ? "#f57c00" : "#1565c0" },
           }}
         >
           {isScreenSharing ? <StopScreenShare /> : <ScreenShare />}
         </IconButton>
 
         <IconButton
-          onClick={() => dispatch({ type: 'ui/toggleChat' })}
+          onClick={() => dispatch({ type: "ui/toggleChat" })}
           sx={{
-            bgcolor: chatOpen ? '#ff9800' : '#1976d2',
-            color: 'white',
-            '&:hover': { bgcolor: chatOpen ? '#f57c00' : '#1565c0' },
+            bgcolor: chatOpen ? "#ff9800" : "#1976d2",
+            color: "white",
+            "&:hover": { bgcolor: chatOpen ? "#f57c00" : "#1565c0" },
           }}
         >
           <Chat />
@@ -702,7 +794,7 @@ const MeetingRoom = () => {
       {chatOpen && (
         <ChatPanel
           meetingId={meetingId}
-          onClose={() => dispatch({ type: 'ui/setChatOpen', payload: false })}
+          onClose={() => dispatch({ type: "ui/setChatOpen", payload: false })}
         />
       )}
 
@@ -723,7 +815,11 @@ const MeetingRoom = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShowLeaveDialog(false)}>Cancel</Button>
-          <Button onClick={handleLeaveMeeting} color="error" variant="contained">
+          <Button
+            onClick={handleLeaveMeeting}
+            color="error"
+            variant="contained"
+          >
             Leave
           </Button>
         </DialogActions>
