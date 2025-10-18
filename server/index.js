@@ -1,3 +1,5 @@
+//index.js
+
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
@@ -76,17 +78,20 @@ io.on('connection', (socket) => {
 
   // Handle WebRTC signaling
   socket.on('offer', (data) => {
-    console.log('Server received offer:', data);
+    console.log('Server received offer from', data.targetUserId, 'to', data.targetUserId);
+    // Send offer to specific target user
     socket.to(data.meetingId).emit('offer', data);
   });
 
   socket.on('answer', (data) => {
-    console.log('Server received answer:', data);
+    console.log('Server received answer from', data.targetUserId, 'to', data.targetUserId);
+    // Send answer to specific target user
     socket.to(data.meetingId).emit('answer', data);
   });
 
   socket.on('ice-candidate', (data) => {
-    console.log('Server received ice-candidate:', data);
+    console.log('Server received ice-candidate from', data.targetUserId, 'to', data.targetUserId);
+    // Send ICE candidate to specific target user
     socket.to(data.meetingId).emit('ice-candidate', data);
   });
 

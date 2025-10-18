@@ -20,7 +20,12 @@ router.post('/create', auth, async (req, res) => {
       password,
       isScheduled,
       scheduledDate: isScheduled ? new Date(scheduledDate) : null,
-      status: isScheduled ? 'scheduled' : 'active'
+      status: isScheduled ? 'scheduled' : 'active',
+      participants: [{
+        user: req.user.id,
+        joinedAt: new Date(),
+        isActive: true
+      }]
     });
 
     await meeting.save();
@@ -30,18 +35,34 @@ router.post('/create', auth, async (req, res) => {
       $push: { meetings: meeting._id }
     });
 
+    // Populate the meeting with user data
+    const populatedMeeting = await Meeting.findById(meeting._id)
+      .populate('creator', 'username email')
+      .populate('participants.user', 'username email');
+
+    // Transform participants to match client expectations
+    const transformedParticipants = populatedMeeting.participants
+      .filter(participant => participant.user) // Filter out participants with missing user data
+      .map(participant => ({
+        userId: participant.user._id,
+        userName: participant.user.username,
+        joinedAt: participant.joinedAt,
+        isActive: participant.isActive
+      }));
+
     res.json({
       success: true,
       meeting: {
-        id: meeting._id,
-        meetingId: meeting.meetingId,
-        title: meeting.title,
-        description: meeting.description,
-        password: meeting.password,
-        isScheduled: meeting.isScheduled,
-        scheduledDate: meeting.scheduledDate,
-        status: meeting.status,
-        creator: meeting.creator
+        id: populatedMeeting._id,
+        meetingId: populatedMeeting.meetingId,
+        title: populatedMeeting.title,
+        description: populatedMeeting.description,
+        password: populatedMeeting.password,
+        isScheduled: populatedMeeting.isScheduled,
+        scheduledDate: populatedMeeting.scheduledDate,
+        status: populatedMeeting.status,
+        creator: populatedMeeting.creator,
+        participants: transformedParticipants
       }
     });
   } catch (error) {

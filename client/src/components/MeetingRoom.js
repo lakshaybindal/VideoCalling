@@ -41,6 +41,13 @@ const MeetingRoom = () => {
   const socket = useSocket();
   
   const { currentMeeting, participants, isMuted, isVideoOff, isScreenSharing, loading, error } = useSelector(state => state.meeting);
+  
+  // Debug participants data
+  useEffect(() => {
+    console.log('📊 Participants updated:', participants);
+    console.log('📊 Participants length:', participants?.length);
+    console.log('📊 Participants details:', participants?.map(p => ({ id: p?.id, userId: p?.userId, userName: p?.userName })));
+  }, [participants]);
   const { chatOpen } = useSelector(state => state.ui);
 
   // WebRTC refs
@@ -58,6 +65,7 @@ const MeetingRoom = () => {
   // Initialize meeting
   useEffect(() => {
     if (meetingId && user) {
+      console.log('🔄 Loading meeting details for meetingId:', meetingId);
       dispatch(getMeetingDetails(meetingId));
     }
   }, [meetingId, user, dispatch]);
@@ -131,23 +139,33 @@ const MeetingRoom = () => {
       // Create peer connections with existing participants
       if (participants && participants.length > 0) {
         console.log('🔗 Creating peer connections with existing participants...');
-        console.log('📊 Participants:', participants);
+        console.log('📊 Raw participants data:', participants);
+        console.log('📊 Participants length:', participants?.length);
+        console.log('📊 Participants details:', participants.map(p => ({ id: p?.id, userId: p?.userId, userName: p?.userName })));
+        console.log('👤 Current user details:', { id: user?.id, username: user?.username });
         
         // Filter out undefined participants and self
         const validParticipants = participants.filter(participant => {
+          console.log('🔍 Raw participant object:', participant);
+          console.log('🔍 Participant keys:', Object.keys(participant || {}));
+          console.log('🔍 Participant.id:', participant?.id);
+          console.log('🔍 Participant.userId:', participant?.userId);
+          console.log('🔍 Participant.userName:', participant?.userName);
+          
           const isValid = participant && 
-            participant.id && 
-            participant.id !== user.id &&
-            participant.id !== 'undefined';
-          console.log(`Participant ${participant?.id} is valid: ${isValid}`);
+            (participant.id || participant.userId) && 
+            (participant.id || participant.userId) !== user.id &&
+            (participant.id || participant.userId) !== 'undefined';
+          console.log(`Participant ${participant?.id || participant?.userId} is valid: ${isValid}`);
           return isValid;
         });
         
         console.log('✅ Valid participants for peer connections:', validParticipants.map(p => p.id));
         
         validParticipants.forEach(participant => {
-          console.log('🔗 Creating peer connection with existing participant:', participant.id);
-          createPeerConnection(participant.id, true);
+          const participantId = participant.id || participant.userId;
+          console.log('🔗 Creating peer connection with existing participant:', participantId);
+          createPeerConnection(participantId, true);
         });
       } else {
         console.log('⚠️ No participants found or participants array is empty');
@@ -162,17 +180,25 @@ const MeetingRoom = () => {
       
       // Add a fallback mechanism to create peer connections with existing participants
       setTimeout(() => {
+        console.log('🔄 Fallback: Checking for missed peer connections...');
         if (participants && participants.length > 0) {
           // Filter out undefined participants and self
-          const validParticipants = participants.filter(participant => 
-            participant && 
-            participant.id && 
-            participant.id !== user.id
-          );
+          const validParticipants = participants.filter(participant => {
+            const participantId = participant?.id || participant?.userId;
+            return participant && 
+              participantId && 
+              participantId !== user.id &&
+              participantId !== 'undefined';
+          });
+          
+          console.log('🔍 Fallback: Valid participants:', validParticipants.map(p => p.id || p.userId));
+          console.log('🔍 Fallback: Current peer connections:', Object.keys(peerConnectionsRef.current));
           
           validParticipants.forEach(participant => {
-            if (!peerConnectionsRef.current[participant.id]) {
-              createPeerConnection(participant.id, true);
+            const participantId = participant.id || participant.userId;
+            if (!peerConnectionsRef.current[participantId]) {
+              console.log('🔗 Fallback: Creating missed peer connection with participant:', participantId);
+              createPeerConnection(participantId, true);
             }
           });
         }
@@ -216,6 +242,27 @@ const MeetingRoom = () => {
       if (data.userId !== user.id) {
         console.log('🔗 Creating peer connection for new user:', data.userId);
         await createPeerConnection(data.userId, true); // Existing user creates connection to new user
+      } else {
+        // This is a self-join event, we need to create peer connections with existing participants
+        console.log('🔄 Self-join detected, creating peer connections with existing participants...');
+        if (participants && participants.length > 0) {
+          const validParticipants = participants.filter(participant => {
+            const participantId = participant?.id || participant?.userId;
+            return participant && 
+              participantId && 
+              participantId !== user.id &&
+              participantId !== 'undefined';
+          });
+          
+          console.log('🔗 Creating peer connections with existing participants:', validParticipants.map(p => p.id || p.userId));
+          validParticipants.forEach(participant => {
+            const participantId = participant.id || participant.userId;
+            if (!peerConnectionsRef.current[participantId]) {
+              console.log('🔗 Creating peer connection with existing participant:', participantId);
+              createPeerConnection(participantId, true);
+            }
+          });
+        }
       }
     });
 
