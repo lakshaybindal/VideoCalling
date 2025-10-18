@@ -53,6 +53,7 @@ const MeetingRoom = () => {
   const [isConnecting, setIsConnecting] = useState(true);
   const [showLeaveDialog, setShowLeaveDialog] = useState(false);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [remoteStreams, setRemoteStreams] = useState({});
 
   // Initialize meeting
   useEffect(() => {
@@ -76,53 +77,79 @@ const MeetingRoom = () => {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const initializeWebRTC = async () => {
+    console.log('🎬 Initializing WebRTC...');
     try {
       // Get user media
+      console.log('📹 Getting user media...');
       const stream = await navigator.mediaDevices.getUserMedia({
         video: true,
         audio: true,
       });
 
+      console.log('✅ User media obtained:', stream);
       localStreamRef.current = stream;
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
       }
 
       // Join meeting room via socket
+      console.log('🚪 Joining meeting room:', meetingId, 'User:', user.id, user.username);
       socket.joinMeeting(meetingId, user.id, user.username);
 
       // Set up socket listeners for WebRTC signaling
       setupSocketListeners();
 
       setIsConnecting(false);
+      console.log('✅ WebRTC initialization complete');
     } catch (error) {
-      console.error('Error accessing media devices:', error);
+      console.error('❌ Error accessing media devices:', error);
       setIsConnecting(false);
     }
   };
 
   const setupSocketListeners = () => {
-    if (!socket.socket) return;
+    if (!socket.socket) {
+      console.log('❌ No socket available for setting up listeners');
+      return;
+    }
+
+    console.log('🔌 Setting up socket listeners...');
+
+    // Remove existing listeners to prevent duplicates
+    socket.socket.off('offer');
+    socket.socket.off('answer');
+    socket.socket.off('ice-candidate');
+    socket.socket.off('user-joined');
+    socket.socket.off('user-left');
 
     // Handle incoming offers
     socket.socket.on('offer', async (data) => {
+      console.log('MeetingRoom received offer:', data);
       await handleIncomingOffer(data);
     });
 
     // Handle incoming answers
     socket.socket.on('answer', async (data) => {
+      console.log('MeetingRoom received answer:', data);
       await handleIncomingAnswer(data);
     });
 
     // Handle incoming ICE candidates
     socket.socket.on('ice-candidate', async (data) => {
+      console.log('MeetingRoom received ice-candidate:', data);
       await handleIncomingIceCandidate(data);
     });
 
     // Handle user joined
     socket.socket.on('user-joined', async (data) => {
+      console.log('👥 User joined event received:', data);
+      console.log('Current user ID:', user.id);
+      console.log('Joined user ID:', data.userId);
       if (data.userId !== user.id) {
-        await createPeerConnection(data.userId, false);
+        console.log('🔗 Creating peer connection for user:', data.userId);
+        await createPeerConnection(data.userId, true); // Existing user creates connection to new user
+      } else {
+        console.log('🚫 Ignoring self-join event');
       }
     });
 
@@ -137,6 +164,14 @@ const MeetingRoom = () => {
   };
 
   const createPeerConnection = async (userId, isInitiator) => {
+    console.log(`Creating peer connection for user ${userId}, isInitiator: ${isInitiator}`);
+    
+    // Check if peer connection already exists
+    if (peerConnectionsRef.current[userId]) {
+      console.log(`Peer connection for user ${userId} already exists, skipping`);
+      return;
+    }
+    
     const configuration = {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -148,6 +183,7 @@ const MeetingRoom = () => {
 
     // Add local stream
     if (localStreamRef.current) {
+      console.log('Adding local stream tracks to peer connection');
       localStreamRef.current.getTracks().forEach(track => {
         peerConnection.addTrack(track, localStreamRef.current);
       });
@@ -155,21 +191,44 @@ const MeetingRoom = () => {
 
     // Handle remote stream
     peerConnection.ontrack = (event) => {
+      console.log('🎥 Received remote stream for user:', userId);
+      console.log('Remote stream details:', event.streams[0]);
+      console.log('Remote stream tracks:', event.streams[0].getTracks());
       const [remoteStream] = event.streams;
       remoteStreamsRef.current[userId] = remoteStream;
+      // Force re-render by updating state
+      setRemoteStreams({ ...remoteStreamsRef.current });
+      console.log('✅ Updated remoteStreams state:', Object.keys(remoteStreamsRef.current));
     };
 
     // Handle ICE candidates
     peerConnection.onicecandidate = (event) => {
       if (event.candidate) {
+        console.log('Sending ICE candidate for user:', userId);
         socket.sendIceCandidate(meetingId, event.candidate, userId);
       }
     };
 
     peerConnectionsRef.current[userId] = peerConnection;
 
+    // Add connection state change listener
+    peerConnection.onconnectionstatechange = () => {
+      console.log(`Peer connection state for user ${userId}:`, peerConnection.connectionState);
+      if (peerConnection.connectionState === 'connected') {
+        console.log(`✅ Peer connection established with user ${userId}`);
+      }
+    };
+
+    peerConnection.oniceconnectionstatechange = () => {
+      console.log(`ICE connection state for user ${userId}:`, peerConnection.iceConnectionState);
+      if (peerConnection.iceConnectionState === 'connected') {
+        console.log(`✅ ICE connection established with user ${userId}`);
+      }
+    };
+
     if (isInitiator) {
       try {
+        console.log('Creating offer for user:', userId);
         const offer = await peerConnection.createOffer();
         await peerConnection.setLocalDescription(offer);
         socket.sendOffer(meetingId, offer, userId);
@@ -180,31 +239,56 @@ const MeetingRoom = () => {
   };
 
   const handleIncomingOffer = async (data) => {
-    const { offer, userId } = data;
+    console.log('Received offer from user:', data.targetUserId || data.userId);
+    const { offer, targetUserId, userId } = data;
+    const actualUserId = targetUserId || userId;
     
-    if (!peerConnectionsRef.current[userId]) {
-      await createPeerConnection(userId, false);
+    if (!peerConnectionsRef.current[actualUserId]) {
+      console.log('Creating peer connection for incoming offer from user:', actualUserId);
+      await createPeerConnection(actualUserId, false);
     }
 
-    const peerConnection = peerConnectionsRef.current[userId];
+    const peerConnection = peerConnectionsRef.current[actualUserId];
     
     try {
+      console.log('Setting remote description and creating answer for user:', actualUserId);
       await peerConnection.setRemoteDescription(offer);
+      
+      // Process stored ICE candidates
+      if (peerConnection.storedIceCandidates) {
+        for (const candidate of peerConnection.storedIceCandidates) {
+          await peerConnection.addIceCandidate(candidate);
+        }
+        peerConnection.storedIceCandidates = [];
+      }
+      
       const answer = await peerConnection.createAnswer();
       await peerConnection.setLocalDescription(answer);
-      socket.sendAnswer(meetingId, answer, userId);
+      socket.sendAnswer(meetingId, answer, actualUserId);
+      console.log('Answer sent for user:', actualUserId);
     } catch (error) {
       console.error('Error handling offer:', error);
     }
   };
 
   const handleIncomingAnswer = async (data) => {
-    const { answer, userId } = data;
-    const peerConnection = peerConnectionsRef.current[userId];
+    console.log('Received answer from user:', data.targetUserId || data.userId);
+    const { answer, targetUserId, userId } = data;
+    const actualUserId = targetUserId || userId;
+    const peerConnection = peerConnectionsRef.current[actualUserId];
     
     if (peerConnection) {
       try {
+        console.log('Setting remote description for answer from user:', actualUserId);
         await peerConnection.setRemoteDescription(answer);
+        
+        // Process stored ICE candidates
+        if (peerConnection.storedIceCandidates) {
+          for (const candidate of peerConnection.storedIceCandidates) {
+            await peerConnection.addIceCandidate(candidate);
+          }
+          peerConnection.storedIceCandidates = [];
+        }
       } catch (error) {
         console.error('Error handling answer:', error);
       }
@@ -212,14 +296,35 @@ const MeetingRoom = () => {
   };
 
   const handleIncomingIceCandidate = async (data) => {
-    const { candidate, userId } = data;
-    const peerConnection = peerConnectionsRef.current[userId];
+    console.log('Received ICE candidate from user:', data.targetUserId || data.userId);
+    const { candidate, targetUserId, userId } = data;
+    const actualUserId = targetUserId || userId;
+    const peerConnection = peerConnectionsRef.current[actualUserId];
     
-    if (peerConnection) {
+    if (peerConnection && peerConnection.remoteDescription) {
       try {
+        console.log('Adding ICE candidate for user:', actualUserId);
         await peerConnection.addIceCandidate(candidate);
       } catch (error) {
         console.error('Error adding ICE candidate:', error);
+      }
+    } else if (peerConnection) {
+      console.log('Peer connection exists but not ready for ICE candidate, storing for later');
+      // Store ICE candidate for later when remote description is set
+      if (!peerConnection.storedIceCandidates) {
+        peerConnection.storedIceCandidates = [];
+      }
+      peerConnection.storedIceCandidates.push(candidate);
+    } else {
+      console.log('No peer connection exists for user, creating one and storing ICE candidate');
+      // Create peer connection and store ICE candidate
+      await createPeerConnection(actualUserId, false);
+      const newPeerConnection = peerConnectionsRef.current[actualUserId];
+      if (newPeerConnection) {
+        if (!newPeerConnection.storedIceCandidates) {
+          newPeerConnection.storedIceCandidates = [];
+        }
+        newPeerConnection.storedIceCandidates.push(candidate);
       }
     }
   };
@@ -428,17 +533,38 @@ const MeetingRoom = () => {
           </Grid>
 
           {/* Remote Videos */}
-          {Object.entries(remoteStreamsRef.current).map(([userId, stream]) => (
-            <Grid item xs={12} sm={6} md={4} key={userId}>
-              <VideoPlayer
-                stream={stream}
-                isLocal={false}
-                userName={`User ${userId}`}
-                isMuted={false}
-                isVideoOff={false}
-              />
+          {console.log('Rendering remote streams:', Object.keys(remoteStreams), 'Count:', Object.keys(remoteStreams).length)}
+          {Object.keys(remoteStreams).length === 0 && (
+            <Grid item xs={12} sm={6} md={4}>
+              <Box
+                sx={{
+                  background: '#333',
+                  borderRadius: 2,
+                  height: 200,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'white',
+                }}
+              >
+                <Typography>Waiting for other participants...</Typography>
+              </Box>
             </Grid>
-          ))}
+          )}
+          {Object.entries(remoteStreams).map(([userId, stream]) => {
+            console.log(`Rendering video for user ${userId}:`, stream);
+            return (
+              <Grid item xs={12} sm={6} md={4} key={userId}>
+                <VideoPlayer
+                  stream={stream}
+                  isLocal={false}
+                  userName={`User ${userId}`}
+                  isMuted={false}
+                  isVideoOff={false}
+                />
+              </Grid>
+            );
+          })}
         </Grid>
       </Box>
 

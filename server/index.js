@@ -7,12 +7,12 @@ const path = require("path");
 require("dotenv").config();
 
 const app = express();
-app.use(cors());
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
     origin: "*",
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    credentials: true,
   },
 });
 
@@ -37,14 +37,10 @@ app.options("*", (req, res) => {
 });
 
 // MongoDB Connection
-mongoose.connect(
-  process.env.MONGODB_URI ||
-    "mongodb+srv://lakshaybindal:lakshay1234@cluster0.znxlqyn.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0",
-  {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  }
-);
+mongoose.connect(process.env.MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+});
 
 // Routes
 app.use("/api/meetings", require("./routes/meetings"));
@@ -75,14 +71,17 @@ io.on("connection", (socket) => {
 
   // Handle WebRTC signaling
   socket.on("offer", (data) => {
+    console.log("Server received offer:", data);
     socket.to(data.meetingId).emit("offer", data);
   });
 
   socket.on("answer", (data) => {
+    console.log("Server received answer:", data);
     socket.to(data.meetingId).emit("answer", data);
   });
 
   socket.on("ice-candidate", (data) => {
+    console.log("Server received ice-candidate:", data);
     socket.to(data.meetingId).emit("ice-candidate", data);
   });
 
@@ -145,7 +144,7 @@ io.on("connection", (socket) => {
   });
 });
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

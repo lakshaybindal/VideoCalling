@@ -22,7 +22,7 @@ export const SocketProvider = ({ children }) => {
 
   useEffect(() => {
     if (isAuthenticated && user) {
-      const newSocket = io(process.env.REACT_APP_SOCKET_URL || 'http://localhost:5000', {
+      const newSocket = io(process.env.REACT_APP_SOCKET_URL || 'http://localhost:3001', {
         auth: {
           userId: user.id,
           userName: user.username,
@@ -66,21 +66,7 @@ export const SocketProvider = ({ children }) => {
         }));
       });
 
-      // WebRTC signaling events
-      newSocket.on('offer', (data) => {
-        // Handle incoming offer
-        console.log('Received offer:', data);
-      });
-
-      newSocket.on('answer', (data) => {
-        // Handle incoming answer
-        console.log('Received answer:', data);
-      });
-
-      newSocket.on('ice-candidate', (data) => {
-        // Handle incoming ICE candidate
-        console.log('Received ICE candidate:', data);
-      });
+      // WebRTC signaling events are handled in MeetingRoom component
 
       // Chat events
       newSocket.on('receive-message', (data) => {
@@ -159,18 +145,21 @@ export const SocketProvider = ({ children }) => {
 
   const sendOffer = (meetingId, offer, targetUserId) => {
     if (socket) {
+      console.log('Sending offer to server:', { meetingId, offer, targetUserId });
       socket.emit('offer', { meetingId, offer, targetUserId });
     }
   };
 
   const sendAnswer = (meetingId, answer, targetUserId) => {
     if (socket) {
+      console.log('Sending answer to server:', { meetingId, answer, targetUserId });
       socket.emit('answer', { meetingId, answer, targetUserId });
     }
   };
 
   const sendIceCandidate = (meetingId, candidate, targetUserId) => {
     if (socket) {
+      console.log('Sending ICE candidate to server:', { meetingId, candidate, targetUserId });
       socket.emit('ice-candidate', { meetingId, candidate, targetUserId });
     }
   };
