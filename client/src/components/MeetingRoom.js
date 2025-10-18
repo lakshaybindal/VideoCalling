@@ -76,6 +76,25 @@ const MeetingRoom = () => {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Periodic check to ensure all participants have peer connections
+  useEffect(() => {
+    if (participants && participants.length > 1) {
+      const interval = setInterval(() => {
+        console.log('🔍 Periodic check: Current participants:', participants.map(p => p.id));
+        console.log('🔍 Current peer connections:', Object.keys(peerConnectionsRef.current));
+        
+        participants.forEach(participant => {
+          if (participant.id !== user.id && !peerConnectionsRef.current[participant.id]) {
+            console.log('🔗 Creating missing peer connection with participant:', participant.id);
+            createPeerConnection(participant.id, true);
+          }
+        });
+      }, 5000); // Check every 5 seconds
+
+      return () => clearInterval(interval);
+    }
+  }, [participants, user.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const initializeWebRTC = async () => {
     console.log('🎬 Initializing WebRTC...');
     try {
@@ -98,9 +117,35 @@ const MeetingRoom = () => {
 
       // Set up socket listeners for WebRTC signaling
       setupSocketListeners();
+      
+      // Create peer connections with existing participants
+      // This is important for when a user joins an existing meeting
+      console.log('🔗 Creating peer connections with existing participants...');
+      if (participants && participants.length > 0) {
+        participants.forEach(participant => {
+          if (participant.id !== user.id) {
+            console.log('🔗 Creating peer connection with existing participant:', participant.id);
+            createPeerConnection(participant.id, true);
+          }
+        });
+      }
 
       setIsConnecting(false);
       console.log('✅ WebRTC initialization complete');
+      
+      // Add a fallback mechanism to create peer connections with existing participants
+      // This ensures we don't miss any connections due to timing issues
+      setTimeout(() => {
+        console.log('🔄 Fallback: Checking for missed peer connections...');
+        if (participants && participants.length > 0) {
+          participants.forEach(participant => {
+            if (participant.id !== user.id && !peerConnectionsRef.current[participant.id]) {
+              console.log('🔗 Creating missed peer connection with participant:', participant.id);
+              createPeerConnection(participant.id, true);
+            }
+          });
+        }
+      }, 2000); // Wait 2 seconds for all user-joined events to be processed
     } catch (error) {
       console.error('❌ Error accessing media devices:', error);
       setIsConnecting(false);
@@ -145,9 +190,14 @@ const MeetingRoom = () => {
       console.log('👥 User joined event received:', data);
       console.log('Current user ID:', user.id);
       console.log('Joined user ID:', data.userId);
+      console.log('Current peer connections:', Object.keys(peerConnectionsRef.current));
+      console.log('Current remote streams:', Object.keys(remoteStreams));
+      
       if (data.userId !== user.id) {
         console.log('🔗 Creating peer connection for user:', data.userId);
         await createPeerConnection(data.userId, true); // Existing user creates connection to new user
+        console.log('✅ Peer connection created for user:', data.userId);
+        console.log('Updated peer connections:', Object.keys(peerConnectionsRef.current));
       } else {
         console.log('🚫 Ignoring self-join event');
       }
@@ -196,9 +246,16 @@ const MeetingRoom = () => {
       console.log('Remote stream tracks:', event.streams[0].getTracks());
       const [remoteStream] = event.streams;
       remoteStreamsRef.current[userId] = remoteStream;
-      // Force re-render by updating state
-      setRemoteStreams({ ...remoteStreamsRef.current });
-      console.log('✅ Updated remoteStreams state:', Object.keys(remoteStreamsRef.current));
+      
+      // Force re-render by updating state with a new object
+      setRemoteStreams(prev => {
+        const newStreams = {
+          ...prev,
+          [userId]: remoteStream
+        };
+        console.log('📺 Updated remote streams:', Object.keys(newStreams));
+        return newStreams;
+      });
     };
 
     // Handle ICE candidates
@@ -520,9 +577,23 @@ const MeetingRoom = () => {
 
       {/* Video Grid */}
       <Box sx={{ flex: 1, p: 2, overflow: 'hidden' }}>
-        <Grid container spacing={2} sx={{ height: '100%' }}>
+        {console.log('Rendering remote streams:', Object.keys(remoteStreams), 'Count:', Object.keys(remoteStreams).length)}
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: {
+              xs: '1fr',
+              sm: Object.keys(remoteStreams).length <= 1 ? 'repeat(2, 1fr)' : 'repeat(2, 1fr)',
+              md: Object.keys(remoteStreams).length <= 2 ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)',
+              lg: Object.keys(remoteStreams).length <= 3 ? 'repeat(3, 1fr)' : 'repeat(4, 1fr)',
+            },
+            gap: 2,
+            height: '100%',
+            alignItems: 'stretch',
+          }}
+        >
           {/* Local Video */}
-          <Grid item xs={12} sm={6} md={4}>
+          <Box sx={{ minHeight: 200, display: 'flex' }}>
             <VideoPlayer
               stream={localStreamRef.current}
               isLocal={true}
@@ -530,31 +601,29 @@ const MeetingRoom = () => {
               isMuted={isMuted}
               isVideoOff={isVideoOff}
             />
-          </Grid>
+          </Box>
 
           {/* Remote Videos */}
-          {console.log('Rendering remote streams:', Object.keys(remoteStreams), 'Count:', Object.keys(remoteStreams).length)}
           {Object.keys(remoteStreams).length === 0 && (
-            <Grid item xs={12} sm={6} md={4}>
-              <Box
-                sx={{
-                  background: '#333',
-                  borderRadius: 2,
-                  height: 200,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: 'white',
-                }}
-              >
-                <Typography>Waiting for other participants...</Typography>
-              </Box>
-            </Grid>
+            <Box
+              sx={{
+                background: '#333',
+                borderRadius: 2,
+                minHeight: 200,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'white',
+                gridColumn: '1 / -1',
+              }}
+            >
+              <Typography>Waiting for other participants...</Typography>
+            </Box>
           )}
           {Object.entries(remoteStreams).map(([userId, stream]) => {
             console.log(`Rendering video for user ${userId}:`, stream);
             return (
-              <Grid item xs={12} sm={6} md={4} key={userId}>
+              <Box key={userId} sx={{ minHeight: 200, display: 'flex' }}>
                 <VideoPlayer
                   stream={stream}
                   isLocal={false}
@@ -562,10 +631,10 @@ const MeetingRoom = () => {
                   isMuted={false}
                   isVideoOff={false}
                 />
-              </Grid>
+              </Box>
             );
           })}
-        </Grid>
+        </Box>
       </Box>
 
       {/* Controls */}
