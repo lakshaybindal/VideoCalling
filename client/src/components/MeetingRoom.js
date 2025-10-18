@@ -213,6 +213,8 @@ const MeetingRoom = () => {
     socket.socket.off('ice-candidate');
     socket.socket.off('user-joined');
     socket.socket.off('user-left');
+    
+    console.log('🔌 Setting up socket listeners...');
 
     // Handle incoming offers
     socket.socket.on('offer', async (data) => {
@@ -233,8 +235,11 @@ const MeetingRoom = () => {
     socket.socket.on('user-joined', async (data) => {
       console.log('👥 User joined event received:', data);
       if (data.userId !== user.id) {
-        console.log('🔗 Creating peer connection for new user:', data.userId);
-        await createPeerConnection(data.userId, true); // Existing user creates connection to new user
+        // Add a small delay to prevent race conditions when multiple users join
+        setTimeout(async () => {
+          console.log('🔗 Creating peer connection for new user:', data.userId);
+          await createPeerConnection(data.userId, true); // Existing user creates connection to new user
+        }, Math.random() * 1000); // Random delay between 0-1000ms
       } else {
         // This is a self-join event, we need to create peer connections with existing participants
         console.log('🔄 Self-join detected, creating peer connections with existing participants...');
@@ -273,10 +278,18 @@ const MeetingRoom = () => {
     console.log(`🔗 Creating peer connection for user ${userId}, isInitiator: ${isInitiator}`);
     
     // Check if peer connection already exists and is not closed
-    if (peerConnectionsRef.current[userId] && 
-        peerConnectionsRef.current[userId].signalingState !== 'closed') {
-      console.log(`⚠️ Peer connection for user ${userId} already exists, skipping`);
-      return;
+    if (peerConnectionsRef.current[userId]) {
+      const existingConnection = peerConnectionsRef.current[userId];
+      if (existingConnection.signalingState !== 'closed' && 
+          existingConnection.signalingState !== 'failed') {
+        console.log(`⚠️ Peer connection for user ${userId} already exists with state: ${existingConnection.signalingState}, skipping`);
+        return;
+      } else {
+        // Clean up failed/closed connection
+        console.log(`🧹 Cleaning up ${existingConnection.signalingState} connection for user ${userId}`);
+        existingConnection.close();
+        delete peerConnectionsRef.current[userId];
+      }
     }
     
     const configuration = {
@@ -316,6 +329,37 @@ const MeetingRoom = () => {
     };
 
     peerConnectionsRef.current[userId] = peerConnection;
+
+    // Add connection state monitoring
+    peerConnection.onconnectionstatechange = () => {
+      console.log(`🔗 Connection state for user ${userId}: ${peerConnection.connectionState}`);
+      if (peerConnection.connectionState === 'failed' || peerConnection.connectionState === 'disconnected') {
+        console.log(`❌ Connection failed for user ${userId}, cleaning up...`);
+        peerConnection.close();
+        delete peerConnectionsRef.current[userId];
+        delete remoteStreamsRef.current[userId];
+        setRemoteStreams(prev => {
+          const newStreams = { ...prev };
+          delete newStreams[userId];
+          return newStreams;
+        });
+      }
+    };
+
+    peerConnection.oniceconnectionstatechange = () => {
+      console.log(`🧊 ICE connection state for user ${userId}: ${peerConnection.iceConnectionState}`);
+      if (peerConnection.iceConnectionState === 'failed') {
+        console.log(`❌ ICE connection failed for user ${userId}, cleaning up...`);
+        peerConnection.close();
+        delete peerConnectionsRef.current[userId];
+        delete remoteStreamsRef.current[userId];
+        setRemoteStreams(prev => {
+          const newStreams = { ...prev };
+          delete newStreams[userId];
+          return newStreams;
+        });
+      }
+    };
 
     if (isInitiator) {
       try {
